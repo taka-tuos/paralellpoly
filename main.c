@@ -3,10 +3,20 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <limits.h>
+#include <string.h>
+
 #include <stdint.h>
 #include <omp.h>
 
 uint32_t *out;
+uint32_t *tex;
+
+int w=1024,h=1024;
+int tw,th;
 
 #define ABSI(n) ((n) > 0 ? (n) : -(n))
 
@@ -48,11 +58,9 @@ void arrayline(int *ay, int x1, int y1, int x2, int y2)
 	
 	for(int x=x1;x<=x2;x++) {
 		if(steep) {
-			ay[x] = y;
-			//out[x*256+y]=0xffff0000;
+			if(x >= 0 && x < h) ay[x] = y;
 		} else {
-			ay[y] = x;
-			//out[y*256+x]=0xff00ff00;
+			if(y >= 0 && y < h) ay[y] = x;
 		}
 		
 		err -= dy;
@@ -67,12 +75,12 @@ void arrayline(int *ay, int x1, int y1, int x2, int y2)
 
 void pppoly(int *xv, int *yv, int *uv, int *vv)
 {
-	int s[3][1024];
+	int s[3][h];
 	int m[3][4]; // min x,max x,min y,max y
 	
-	int miny=1024,maxy=0;
+	int miny=INT_MAX,maxy=INT_MIN;
 	
-	for(int i=0;i<3;i++) memset(s,255,1024*sizeof(int));
+	for(int i=0;i<3;i++) memset(s,255,h*sizeof(int));
 	
 	int x[3],y[3];
 	int u[3],v[3];
@@ -88,9 +96,6 @@ void pppoly(int *xv, int *yv, int *uv, int *vv)
 			mii = i;
 		}
 	}
-	
-	int dmy1,dmy2,dmy3;
-	unsigned int *tex = (unsigned int *)stbi_load("tex.png",&dmy1,&dmy2,&dmy3,4);
 	
 	for(int i=0;i<3;i++) {
 		if(i == mii) {
@@ -133,6 +138,10 @@ void pppoly(int *xv, int *yv, int *uv, int *vv)
 	
 	printf("min=%d,max=%d\n",miny,maxy);
 	
+	if(miny >= h && maxy < 0) return;
+	if(miny < 0) miny = 0;
+	if(maxy >= h) maxy = h - 1;
+	
 #pragma omp parallel for
 	for(int i=miny;i<maxy;i++) {
 		int sa,sb,tmp;
@@ -170,25 +179,32 @@ void pppoly(int *xv, int *yv, int *uv, int *vv)
 			vb=tmp;
 		}
 		
+		int minx = sa, maxx = sb;
+		
+		if(sa >= w && sb < 0) continue;
+		if(sa < 0) sa = 0;
+		if(sb >= w) sb = w - 1;
+		
 		for(int j=sa;j<sb;j++) {
-			int g=INTERP(sa,sb,ua,ub,j);
-			int b=INTERP(sa,sb,va,vb,j);
-			//out[i*256+j]=0xff000000 | (g << 8) | (b << 16);
-			out[i*256+j] = tex[b*256+g];
+			int u=INTERP(minx,maxx,ua,ub,j);
+			int v=INTERP(minx,maxx,va,vb,j);
+			
+			out[i*w+j] = tex[v*tw+u];
 		}
 	}
 }
 
 int main(void)
 {
-	int w=256,h=256;
-	
 	out = (uint32_t *)malloc(w*h*sizeof(uint32_t));
 	
 	memset(out,0x00,w*h*sizeof(uint32_t));
 	
-	int x[] = {160,30,240};
-	int y[] = {30,120,240};
+	int dmy;
+	tex = (uint32_t *)stbi_load("tex.png",&tw,&th,&dmy,4);
+	
+	int x[] = {960,30,1000};
+	int y[] = {30,540,990};
 	int u[] = {0,0,255};
 	int v[] = {0,255,255};
 	
